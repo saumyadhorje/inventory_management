@@ -1,0 +1,192 @@
+import streamlit as st
+import pandas as pd
+import io
+
+# ---------------- PAGE SETUP ----------------
+
+st.set_page_config(
+    page_title="Inventory Management System",
+    layout="wide"
+)
+
+st.title("📦 Smart Inventory Management System")
+
+st.write("Upload your Excel file to calculate stock shortages.")
+
+# ---------------- FILE UPLOAD ----------------
+
+uploaded_file = st.file_uploader(
+    "Upload Excel File",
+    type=["xlsx"]
+)
+
+# ---------------- PROCESS FILE ----------------
+
+if uploaded_file is not None:
+
+    # Read Excel
+    df = pd.read_excel(uploaded_file)
+
+    st.subheader("📄 Original Data")
+
+    st.dataframe(df)
+
+    # -------------------------------------------------
+    # CLEAN COLUMN NAMES
+    # -------------------------------------------------
+
+    df.columns = df.columns.astype(str)
+
+    # -------------------------------------------------
+    # IDENTIFY IMPORTANT COLUMNS
+    # -------------------------------------------------
+
+    item_col = "Item"
+    status_col = "Status : Current"
+    consign_col = "IPS Consign"
+
+    # -------------------------------------------------
+    # FIND DATE COLUMNS AUTOMATICALLY
+    # -------------------------------------------------
+
+    forecast_cols = []
+
+    start_collecting = False
+
+    for col in df.columns:
+
+        if "Weekly Forecast Start Date" in col:
+            start_collecting = True
+            continue
+
+        if start_collecting:
+            forecast_cols.append(col)
+
+    # -------------------------------------------------
+    # HANDLE MISSING VALUES
+    # -------------------------------------------------
+
+    df[status_col] = pd.to_numeric(
+        df[status_col],
+        errors='coerce'
+    ).fillna(0)
+
+    df[consign_col] = pd.to_numeric(
+        df[consign_col],
+        errors='coerce'
+    ).fillna(0)
+
+    # -------------------------------------------------
+    # CONVERT FORECAST COLUMNS TO NUMBERS
+    # -------------------------------------------------
+
+    for col in forecast_cols:
+        df[col] = pd.to_numeric(
+            df[col],
+            errors='coerce'
+        ).fillna(0)
+
+    # -------------------------------------------------
+    # CALCULATIONS
+    # -------------------------------------------------
+
+    # Total Stock
+    df["Total Stock"] = (
+        df[status_col] +
+        df[consign_col]
+    )
+
+    # Total Required
+    df["Total Required"] = df[forecast_cols].sum(axis=1)
+
+    # To Order
+    df["To Order"] = (
+        df["Total Required"] -
+        df["Total Stock"]
+    )
+
+    # Remove negatives
+    df["To Order"] = df["To Order"].clip(lower=0)
+
+    # -------------------------------------------------
+    # FINAL OUTPUT
+    # -------------------------------------------------
+
+    output_df = df[[
+        item_col,
+        status_col,
+        consign_col,
+        "Total Stock",
+        "Total Required",
+        "To Order"
+    ]]
+
+    # -------------------------------------------------
+    # SUMMARY CARDS
+    # -------------------------------------------------
+
+    st.subheader("📊 Summary")
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric(
+        "Total Products",
+        len(output_df)
+    )
+
+    col2.metric(
+        "Total Required Qty",
+        int(output_df["Total Required"].sum())
+    )
+
+    col3.metric(
+        "Total Order Qty",
+        int(output_df["To Order"].sum())
+    )
+
+    # -------------------------------------------------
+    # HIGHLIGHT LOW STOCK
+    # -------------------------------------------------
+
+    def highlight_order(row):
+
+        if row["To Order"] > 0:
+            return ['background-color: #ffcccc'] * len(row)
+
+        return ['background-color: #ccffcc'] * len(row)
+
+    st.subheader("📦 Processed Inventory")
+
+    styled_df = output_df.style.apply(
+        highlight_order,
+        axis=1
+    )
+
+    st.dataframe(
+        styled_df,
+        use_container_width=True
+    )
+
+    # -------------------------------------------------
+    # DOWNLOAD EXCEL
+    # -------------------------------------------------
+
+    buffer = io.BytesIO()
+
+    with pd.ExcelWriter(
+        buffer,
+        engine='openpyxl'
+    ) as writer:
+
+        output_df.to_excel(
+            writer,
+            index=False,
+            sheet_name='Processed Inventory'
+        )
+
+    st.download_button(
+        label="⬇ Download Processed Report",
+        data=buffer.getvalue(),
+        file_name="processed_inventory.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )

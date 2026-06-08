@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.xlsx
+processed_inventory.xlsx
+.env
+.vscode/
