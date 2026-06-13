@@ -129,19 +129,56 @@ if uploaded_file is not None:
 
 # ---------------- OUTPUT TABLE ----------------
 
-    output_df = df[
-        [
-            "Item",
-            "Status : Current",
-            "IPS Consign",
-            "Total Stock",
-            "Total Required",
-            "To Order",
-            "Shortage Qty",
-            "Shortage Date",
-            "Status"
-        ]
-    ]
+   # output_df = df[
+   #     [
+    #        "Item",
+  #          "Status : Current",
+   #         "IPS Consign",
+   #         "Total Stock",
+   #         "Total Required",
+   #         "To Order",
+   #         "Shortage Qty",
+   #         "Shortage Date",
+    #        "Status"
+    #    ]
+    #]
+    # ---------------- PHASE 1 OUTPUT ----------------
+
+    phase1_df = pd.DataFrame()
+
+    phase1_df["Item"] = df["Item"]
+
+    phase1_df["Status : Current"] = df["Status : Current"]
+    phase1_df["IPS Consign"] = df["IPS Consign"]
+
+    phase1_df["Stock+IPS"] = df["Total Stock"]
+
+    phase1_df["Total Forecast Qty"] = df["Total Required"]
+
+    phase1_df["Total F/cast qty less total stock"] = df["To Order"]
+
+    phase1_df["Shortage Qty (Stk - weekly f/cast)"] = df["Shortage Qty"]
+
+    phase1_df["Shortage Date"] = df["Shortage Date"]
+
+    phase1_df["Status"] = df["Status"]
+
+# User editable columns
+
+    phase1_df["Open PO Qty"] = 0
+    phase1_df["Supplier stk"] = 0
+
+    phase1_df["Sea Transit 1"] = 0
+    phase1_df["Sea Transit 2"] = 0
+    phase1_df["Sea Transit 3"] = 0
+
+    phase1_df["Transit fedex 1"] = 0
+    phase1_df["Transit fedex 2"] = 0
+
+    # Hidden forecast columns for Phase 2
+
+    for col in forecast_columns:
+        phase1_df[col] = df[col]
 
     # ---------------- SUMMARY ----------------
 
@@ -151,25 +188,47 @@ if uploaded_file is not None:
 
     col1.metric(
         "Total Products",
-        len(output_df)
+        len(phase1_df)
     )
 
     col2.metric(
         "Total Required Qty",
-        int(output_df["Total Required"].sum())
+        int(phase1_df["Total Forecast Qty"].sum())
     )
 
     col3.metric(
         "Total Order Qty",
-        int(output_df["To Order"].sum())
+        int(
+            phase1_df[
+                "Total F/cast qty less total stock"
+            ].sum()
+        )
     )
-
-    # ---------------- DISPLAY ----------------
+        # ---------------- DISPLAY ----------------
 
     st.subheader("✅ Processed Inventory Report")
 
+    visible_columns = [
+        "Item",
+        "Status : Current",
+        "IPS Consign",
+        "Stock+IPS",
+        "Total Forecast Qty",
+        "Total F/cast qty less total stock",
+        "Shortage Qty (Stk - weekly f/cast)",
+        "Shortage Date",
+        "Status",
+        "Open PO Qty",
+        "Supplier stk",
+        "Sea Transit 1",
+        "Sea Transit 2",
+        "Sea Transit 3",
+        "Transit fedex 1",
+        "Transit fedex 2"
+    ]
+
     st.dataframe(
-        output_df,
+        phase1_df[visible_columns],
         use_container_width=True
     )
 
@@ -177,7 +236,7 @@ if uploaded_file is not None:
 
     output_file = "processed_inventory.xlsx"
 
-    output_df.to_excel(
+    phase1_df.to_excel(
         output_file,
         index=False
     )
