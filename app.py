@@ -1,254 +1,414 @@
-# streamlit run app.py
+# streamlit run phase1and2.py
+
+#Stk+IPS+OpenPO+Transit (Total Avail Column name) -->done
+#New Column (Sea1 +Sea2+Sea3+Fedex1+Fedex2) name it transit in phase two ->done
+#Change Column Name (Qty (Stk-weekly f/cast)) to (Shortage Qty for Shipment)-->done
 
 import streamlit as st
 import pandas as pd
 
-# ---------------- PAGE CONFIG ----------------
 st.set_page_config(
     page_title="Smart Inventory System",
     layout="wide"
 )
 
-# ---------------- TITLE ----------------
 st.title("📦 Smart Inventory Management System")
-st.write("Upload Excel file to calculate stock shortages.")
 
-# ---------------- FILE UPLOAD ----------------
+phase = st.radio(
+    "Select Phase",
+    [
+        "Phase 1 - Create Processed Report",
+        "Phase 2 - Generate Final Report"
+    ]
+)
+
 uploaded_file = st.file_uploader(
     "Upload Excel File",
     type=["xlsx"]
 )
 
-# ---------------- PROCESS FILE ----------------
-if uploaded_file is not None:
+# =====================================================
+# PHASE 1
+# =====================================================
 
-    # Read Excel
-    df = pd.read_excel(uploaded_file)
+if phase == "Phase 1 - Create Processed Report":
 
-    # Clean column names
-    df.columns = df.columns.astype(str).str.strip()
+    if uploaded_file is not None:
 
-    # ---------------- DEBUG ----------------
-   # st.subheader("🔍 Detected Columns")
-    #st.write(df.columns.tolist())
+        df = pd.read_excel(uploaded_file)
+        #st.write(df.columns.tolist())
+        df = pd.read_excel(uploaded_file)
+        df.columns = df.columns.astype(str).str.strip()
+        st.subheader("📄 Original Data")
+        st.dataframe(df)
 
-    # ---------------- ORIGINAL DATA ----------------
-    st.subheader("📄 Original Data")
-    st.dataframe(df)
-
-    # ---------------- STOCK CALCULATION ----------------
-
-    # Convert stock columns to numeric
-    df["Status : Current"] = pd.to_numeric(
-        df["Status : Current"],
-        errors="coerce"
-    ).fillna(0)
-
-    df["IPS Consign"] = pd.to_numeric(
-        df["IPS Consign"],
-        errors="coerce"
-    ).fillna(0)
-
-    # Total Stock
-    df["Total Stock"] = (
-        df["Status : Current"] +
-        df["IPS Consign"]
-    )
-
-    # ---------------- FIND DATE COLUMNS ----------------
-
-    forecast_columns = []
-
-    for col in df.columns:
-
-        try:
-            parsed = pd.to_datetime(col)
-
-            # Only treat columns that look like dates
-            if pd.notnull(parsed):
-                forecast_columns.append(col)
-
-        except:
-            pass
-
-    #st.subheader("📅 Forecast Columns Detected")
-    #st.write(forecast_columns)
-
-    # Convert forecast columns to numeric
-    for col in forecast_columns:
-        df[col] = pd.to_numeric(
-            df[col],
+        df["Status : Current"] = pd.to_numeric(
+            df["Status : Current"],
             errors="coerce"
         ).fillna(0)
 
-    # Total Required
-    df["Total Required"] = df[forecast_columns].sum(axis=1)
+        df["IPS Consign"] = pd.to_numeric(
+            df["IPS Consign"],
+            errors="coerce"
+        ).fillna(0)
 
-    # To Order
-    df["To Order"] = (
-        df["Total Required"] -
-        df["Total Stock"]
-    ).clip(lower=0)
+        df["Total Stock"] = (
+            df["Status : Current"] +
+            df["IPS Consign"]
+        )
 
-     # ---------------- SHORTAGE DATE & SHORTAGE QTY ----------------
+        forecast_columns = []
 
-    shortage_qty_list = []
-    shortage_date_list = []
+        for col in df.columns:
+            try:
+                pd.to_datetime(col)
+                forecast_columns.append(col)
+            except:
+                pass
 
-    for _, row in df.iterrows():
+        for col in forecast_columns:
+            df[col] = pd.to_numeric(
+                df[col],
+                errors="coerce"
+            ).fillna(0)
 
-        remaining_stock = row["Total Stock"]
+        df["Total Required"] = df[
+            forecast_columns
+        ].sum(axis=1)
 
-        shortage_qty = 0
-        shortage_date = "No Shortage"
+        df["To Order"] = (
+            df["Total Required"] -
+            df["Total Stock"]
+        ).clip(lower=0)
 
-        for date_col in forecast_columns:
+        shortage_qty_list = []
+        shortage_date_list = []
 
-            demand = row[date_col]
+        for _, row in df.iterrows():
 
-            remaining_stock -= demand
+            remaining_stock = row["Total Stock"]
 
-            if remaining_stock < 0:
+            shortage_qty = 0
+            shortage_date = "No Shortage"
 
-                shortage_qty = abs(int(remaining_stock))
-                shortage_date = date_col
+            for date_col in forecast_columns:
 
-                break
+                remaining_stock -= row[date_col]
 
-        shortage_qty_list.append(shortage_qty)
-        shortage_date_list.append(shortage_date)
+                if remaining_stock < 0:
 
-    df["Shortage Qty"] = shortage_qty_list
-    df["Shortage Date"] = shortage_date_list
+                    shortage_qty = (
+                        int(remaining_stock)
+                    )
+
+                    shortage_date = date_col
+
+                    break
+
+            shortage_qty_list.append(
+                shortage_qty
+            )
+
+            shortage_date_list.append(
+                shortage_date
+            )
+
+        df["Shortage Qty"] = shortage_qty_list
+        df["Shortage Date"] = shortage_date_list
+
+        df["Status"] = df["To Order"].apply(
+            lambda x:
+            "🟡 Need Order"
+            if x > 0
+            else "🟢 Sufficient Stock"
+        )
+
+        phase1_df = pd.DataFrame()
+
+        phase1_df["Item"] = df["Item"]
+
+        phase1_df["Status : Current"] = df[
+            "Status : Current"
+        ]
+
+        phase1_df["IPS Consign"] = df[
+            "IPS Consign"
+        ]
+
+        phase1_df["Stock +IPS"] = df[
+            "Total Stock"
+        ]
+#sum of all weekly forecast quantities.
+        phase1_df["Total Forecast Qty"] = df[
+            "Total Required"
+        ]
+
+#F/cast qty less total stock =Total Forecast Qty - Stock +IPS
+        phase1_df[
+            "F/cast qty less total stock"
+        ] = df["To Order"]
+        
     
-    # ---------------- STATUS COLUMN ----------------
 
-    df["Status"] = df["To Order"].apply(
-    lambda x: "🟡 Need Order" if x > 0 else "🟢 Sufficient Stock"
+        phase1_df[
+            "Shortage Qty for Shipment"
+        ] = df["Shortage Qty"]
+
+        phase1_df[
+            "Shortage Date"
+        ] = df["Shortage Date"]
+
+        phase1_df["Status"] = df["Status"]
+
+        phase1_df["Open PO Qty"] = 0
+        phase1_df["Supplier stk"] = 0
+        phase1_df["Sea transit 1"] = 0
+        phase1_df["Sea transit 2"] = 0
+        phase1_df["Sea transit 3"] = 0
+        phase1_df["Transit fedex 1"] = 0
+        phase1_df["Transit fedex 2"] = 0
+
+        # Hidden forecast columns
+        for col in forecast_columns:
+            phase1_df[col] = df[col]
+
+        st.subheader("📊 Inventory Summary")
+
+        c1, c2, c3 = st.columns(3)
+
+        c1.metric(
+            "Total Products",
+            len(phase1_df)
+        )
+
+        c2.metric(
+            "Total Required Qty",
+            int(
+                phase1_df[
+                    "Total Forecast Qty"
+                ].sum()
+            )
+        )
+
+        c3.metric(
+            "Total Order Qty",
+            int(
+                phase1_df[
+                    "F/cast qty less total stock"
+                ].sum()
+            )
+        )
+
+        visible_cols = [
+            "Item",
+            "Status : Current",
+            "IPS Consign",
+            "Stock +IPS",
+            "Total Forecast Qty",
+            "F/cast qty less total stock",
+            "Shortage Qty for Shipment",
+            "Shortage Date",
+            "Status",
+            "Open PO Qty",
+            "Supplier stk",
+            "Sea transit 1",
+            "Sea transit 2",
+            "Sea transit 3",
+            "Transit fedex 1",
+            "Transit fedex 2"
+        ]
+
+        st.subheader(
+            "✅ Processed Inventory Report"
+        )
+
+        st.dataframe(
+            phase1_df[visible_cols],
+            use_container_width=True
+        )
+
+        output_file = (
+            "processed_inventory.xlsx"
+        )
+
+        phase1_df.to_excel(
+            output_file,
+            index=False
+        )
+
+        with open(output_file, "rb") as file:
+
+            st.download_button(
+                "📥 Download Processed Report",
+                data=file,
+                file_name=output_file
+            )
+
+# =====================================================
+# PHASE 2
+# =====================================================
+
+elif phase == "Phase 2 - Generate Final Report":
+
+    if uploaded_file is not None:
+
+        df = pd.read_excel(uploaded_file)
+
+        df.columns = (
+            df.columns.astype(str).str.strip()
+        )
+
+        # Debug - remove later if you want
+        #st.write("Columns Found:")
+        #st.write(df.columns.tolist())
+
+        # Find hidden forecast date columns
+        forecast_columns = []
+
+        for col in df.columns:
+            try:
+                pd.to_datetime(col)
+                forecast_columns.append(col)
+            except:
+                pass
+
+        editable_cols = [
+    "Open PO Qty",
+    "Supplier stk",
+    "Sea transit 1",
+    "Sea transit 2",
+    "Sea transit 3",
+    "Transit fedex 1",
+    "Transit fedex 2"
+]
+        
+
+        # Convert editable columns to numeric
+        for col in editable_cols:
+
+            if col not in df.columns:
+                st.error(f"Missing column: {col}")
+                st.stop()
+
+            df[col] = pd.to_numeric(
+                df[col],
+                errors="coerce"
+            ).fillna(0)
+
+        # Transit Total
+
+        df["Transit"] = (
+            df["Sea transit 1"] +
+            df["Sea transit 2"] +
+            df["Sea transit 3"] +
+            df["Transit fedex 1"] +
+            df["Transit fedex 2"]
+        )
+        #total avail
+        df["Stk+IPS+OpenPO+Transit"] = (
+    df["Stock +IPS"] +
+    df["Open PO Qty"] +
+    df["Supplier stk"] +
+    df["Transit"]
 )
 
-# ---------------- OUTPUT TABLE ----------------
+        # Total shortage
+        df["Total shortage"] = (
+            df["Total Forecast Qty"] -
+            df["Stk+IPS+OpenPO+Transit"]
+        ).clip(lower=0)
 
-   # output_df = df[
-   #     [
-    #        "Item",
-  #          "Status : Current",
-   #         "IPS Consign",
-   #         "Total Stock",
-   #         "Total Required",
-   #         "To Order",
-   #         "Shortage Qty",
-   #         "Shortage Date",
-    #        "Status"
-    #    ]
-    #]
-    # ---------------- PHASE 1 OUTPUT ----------------
+        # Shortage Qty & Date
+        shortage_qty_list = []
+        shortage_date_list = []
 
-    phase1_df = pd.DataFrame()
+        for _, row in df.iterrows():
 
-    phase1_df["Item"] = df["Item"]
+            available_stock = row["Stk+IPS+OpenPO+Transit"]
 
-    phase1_df["Status : Current"] = df["Status : Current"]
-    phase1_df["IPS Consign"] = df["IPS Consign"]
+            shortage_qty = 0
+            shortage_date = "No Shortage"
 
-    phase1_df["Stock+IPS"] = df["Total Stock"]
+            for date_col in forecast_columns:
 
-    phase1_df["Total Forecast Qty"] = df["Total Required"]
+                available_stock -= row[date_col]
 
-    phase1_df["Total F/cast qty less total stock"] = df["To Order"]
+                if available_stock < 0:
 
-    phase1_df["Shortage Qty (Stk - weekly f/cast)"] = df["Shortage Qty"]
+                    shortage_qty = (
+                        int(available_stock)
+                    )
 
-    phase1_df["Shortage Date"] = df["Shortage Date"]
+                    shortage_date = date_col
 
-    phase1_df["Status"] = df["Status"]
+                    break
 
-# User editable columns
+            shortage_qty_list.append(
+                shortage_qty
+            )
 
-    phase1_df["Open PO Qty"] = 0
-    phase1_df["Supplier stk"] = 0
+            shortage_date_list.append(
+                shortage_date
+            )
 
-    phase1_df["Sea Transit 1"] = 0
-    phase1_df["Sea Transit 2"] = 0
-    phase1_df["Sea Transit 3"] = 0
+        df["Shortage Qty"] = shortage_qty_list
+        df["Shortage Date"] = shortage_date_list
 
-    phase1_df["Transit fedex 1"] = 0
-    phase1_df["Transit fedex 2"] = 0
-
-    # Hidden forecast columns for Phase 2
-
-    for col in forecast_columns:
-        phase1_df[col] = df[col]
-
-    # ---------------- SUMMARY ----------------
-
-    st.subheader("📊 Inventory Summary")
-
-    col1, col2, col3 = st.columns(3)
-
-    col1.metric(
-        "Total Products",
-        len(phase1_df)
-    )
-
-    col2.metric(
-        "Total Required Qty",
-        int(phase1_df["Total Forecast Qty"].sum())
-    )
-
-    col3.metric(
-        "Total Order Qty",
-        int(
-            phase1_df[
-                "Total F/cast qty less total stock"
-            ].sum()
+        # Status
+        df["Status"] = df[
+            "Total shortage"
+        ].apply(
+            lambda x:
+            "🟡 Need Order"
+            if x > 0
+            else "🟢 Sufficient Stock"
         )
-    )
-        # ---------------- DISPLAY ----------------
 
-    st.subheader("✅ Processed Inventory Report")
-
-    visible_columns = [
+        # Final Output
+       # Final Output
+        final_df = df[
+    [
         "Item",
-        "Status : Current",
-        "IPS Consign",
-        "Stock+IPS",
-        "Total Forecast Qty",
-        "Total F/cast qty less total stock",
-        "Shortage Qty (Stk - weekly f/cast)",
-        "Shortage Date",
-        "Status",
+        "Stock +IPS",
         "Open PO Qty",
         "Supplier stk",
-        "Sea Transit 1",
-        "Sea Transit 2",
-        "Sea Transit 3",
+        "Sea transit 1",
+        "Sea transit 2",
+        "Sea transit 3",
         "Transit fedex 1",
-        "Transit fedex 2"
+        "Transit fedex 2",
+        "Transit",
+        "Total Forecast Qty",
+        "Stk+IPS+OpenPO+Transit",
+        "Total shortage",
+        "Shortage Qty",
+        "Shortage Date",
+        "Status"
     ]
+]
 
-    st.dataframe(
-        phase1_df[visible_columns],
-        use_container_width=True
-    )
-
-    # ---------------- DOWNLOAD ----------------
-
-    output_file = "processed_inventory.xlsx"
-
-    phase1_df.to_excel(
-        output_file,
-        index=False
-    )
-
-    with open(output_file, "rb") as file:
-
-        st.download_button(
-            label="📥 Download Processed Report",
-            data=file,
-            file_name="processed_inventory.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        st.subheader(
+            "✅ Final Inventory Report"
         )
-        # make a shortage col , which will have the amount of short (number) and the date on which it is falling short on.
-        #current stck+IPS -(req1+req2) , so if you get negative , stop and that will go in the shortage col with date
-        
+
+        st.dataframe(
+            final_df,
+            use_container_width=True
+        )
+
+        final_df.to_excel(
+            "final_inventory_report.xlsx",
+            index=False
+        )
+
+        with open(
+            "final_inventory_report.xlsx",
+            "rb"
+        ) as file:
+
+            st.download_button(
+                label="📥 Download Final Report",
+                data=file,
+                file_name="final_inventory_report.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
