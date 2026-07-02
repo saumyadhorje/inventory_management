@@ -1,4 +1,4 @@
-# streamlit run phase1and2.py
+# streamlit run app.py
 
 #Stk+IPS+OpenPO+Transit (Total Avail Column name) -->done
 #New Column (Sea1 +Sea2+Sea3+Fedex1+Fedex2) name it transit in phase two ->done
@@ -6,6 +6,23 @@
 
 import streamlit as st
 import pandas as pd
+from datetime import datetime
+
+def format_date(date_str):
+    dt = pd.to_datetime(date_str)
+
+    day = dt.day
+
+    if 10 <= day % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {
+            1: "st",
+            2: "nd",
+            3: "rd"
+        }.get(day % 10, "th")
+
+    return f"{day}{suffix} {dt.strftime('%B, %Y')}"
 
 st.set_page_config(
     page_title="Smart Inventory System",
@@ -101,7 +118,8 @@ if phase == "Phase 1 - Create Processed Report":
                         int(remaining_stock)
                     )
 
-                    shortage_date = date_col
+                   # shortage_date = date_col
+                    shortage_date = format_date(date_col)
 
                     break
 
@@ -339,7 +357,8 @@ elif phase == "Phase 2 - Generate Final Report":
                         int(available_stock)
                     )
 
-                    shortage_date = date_col
+                    #shortage_date = date_col
+                    shortage_date = format_date(date_col)
 
                     break
 
