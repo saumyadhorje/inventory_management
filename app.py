@@ -119,7 +119,8 @@ if phase == "Phase 1 - Create Processed Report":
                     )
 
                    # shortage_date = date_col
-                    shortage_date = format_date(date_col)
+                   # shortage_date = format_date(date_col)
+                    shortage_date = pd.to_datetime(date_col).strftime("%d-%b-%Y")
 
                     break
 
@@ -358,8 +359,8 @@ elif phase == "Phase 2 - Generate Final Report":
                     )
 
                     #shortage_date = date_col
-                    shortage_date = format_date(date_col)
-
+                    #shortage_date = format_date(date_col)
+                    shortage_date = pd.to_datetime(date_col).strftime("%d-%b-%Y")
                     break
 
             shortage_qty_list.append(
